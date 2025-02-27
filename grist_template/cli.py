@@ -6,11 +6,11 @@ import os
 import sys
 from functools import partial
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from jinja2 import Environment, StrictUndefined
 from pygrist_mini import GristClient
 from strictyaml import Map, Optional, Seq, Str, load
-from zoneinfo import ZoneInfo
 
 
 if TYPE_CHECKING:
@@ -42,7 +42,7 @@ def exec_with_return(
             last_expression = ast.unparse(a.body.pop())
         elif isinstance(a_last, ast.Assign):
             last_expression = ast.unparse(a_last.targets[0])
-        elif isinstance(a_last, (ast.AnnAssign, ast.AugAssign)):
+        elif isinstance(a_last, ast.AnnAssign | ast.AugAssign):
             last_expression = ast.unparse(a_last.target)
     compiled_code = compile(ast.unparse(a), location, "exec")
     exec(compiled_code, globals, locals)
