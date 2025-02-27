@@ -1,0 +1,23 @@
+grist_root_url: "https://getgrist.com"
+grist_doc_id: abc123
+
+timezone: America/Chicago
+
+query: |
+    select *
+    from Talk_slots
+    left outer join Persons on Talk_slots.Student = Persons.id
+    left outer join Papers on Talk_slots.Paper = Papers.id
+    order by Day, Slot
+
+template: |
+
+    | Date | Slot | Who | Title | Paper |
+    | ---- | ---- | --- | ----- | ---- |
+    {% for row in rows -%}
+    {%- if row.Full_name -%}
+    | {{ row.Day | format_date_timestamp("%B %d") }} | {{ row.Slot}} | {{ row.Full_name }} | {% if row.Talk_URL %}[{{ row.Description }}]({{ row.Talk_URL }}){% else %}{{ row.Description }}{%endif %} | [Link]({{ row.Paper_link }})
+    {% else -%}
+    | {{ row.Day | format_date_timestamp("%B %d") }} | {{ row.Slot }} |
+    {% endif -%}
+    {% endfor %}
