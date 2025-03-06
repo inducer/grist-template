@@ -134,7 +134,8 @@ def main():
 
     template = env.from_string(yaml_doc["template"].text)
     print(template.render({
-        "rows": [row_to_object(row) for row in client.sql(query)]
+        "rows": [row_to_object(row) for row in client.sql(query)],
+        **param_values,
     }))
 
 # vim: foldmethod=marker
