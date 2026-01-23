@@ -21,8 +21,10 @@ classifiers = [
 ]
 dependencies = [
     "pygrist_mini >=2023.2",
-    "strictyaml ~=1.7.3",
     "jinja2 ~=3.1.2",
+    "pydantic ~= 2.12",
+    "typed_argparse ~= 0.3.1",
+    "saneyaml ~= 0.6.1",
 ]
 
 [project.scripts]
