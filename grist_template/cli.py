@@ -1,53 +1,35 @@
 from __future__ import annotations
 
-import argparse
-import ast
 import os
-import sys
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
+import typed_argparse as tap
 from jinja2 import Environment, StrictUndefined
+from pydantic import BaseModel, Field
 from pygrist_mini import GristClient
-from strictyaml import Map, Optional, Seq, Str, load
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from datetime import timezone
 
 
 UTC  = ZoneInfo("UTC")
 
 
-YAML_SCHEMA = Map({
-    "grist_root_url": Str(),
-    "grist_doc_id": Str(),
-    Optional("parameters"): Seq(Str()),
-    "query": Str(),
-    "template": Str(),
-    Optional("timezone"): Str(),
-    })
+class TemplateDocument(BaseModel):
+    grist_root_url: str
+    grist_doc_id: str
 
+    parameters: list[str] = Field(default_factory=list)
 
-# based on https://stackoverflow.com/a/76636602
-def exec_with_return(
-        code: str, location: str, globals: dict | None,
-        locals: dict | None = None,
-        ) -> Any:
-    a = ast.parse(code)
-    last_expression = None
-    if a.body:
-        if isinstance(a_last := a.body[-1], ast.Expr):
-            last_expression = ast.unparse(a.body.pop())
-        elif isinstance(a_last, ast.Assign):
-            last_expression = ast.unparse(a_last.targets[0])
-        elif isinstance(a_last, ast.AnnAssign | ast.AugAssign):
-            last_expression = ast.unparse(a_last.target)
-    compiled_code = compile(ast.unparse(a), location, "exec")
-    exec(compiled_code, globals, locals)
-    if last_expression:
-        return eval(last_expression, globals, locals)
+    query: str
+    template: str
+
+    timezone: str | None = None
 
 
 def format_date_timestamp(
@@ -73,69 +55,78 @@ class Row:
     pass
 
 
-def row_to_object(row: dict[str, Any]) -> object:
+def row_to_object(row: dict[str, Any]) -> Row:
     obj = Row()
     obj.__dict__.update(row)
     return obj
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Email merge for Grist")
-    parser.add_argument("filename", metavar="FILENAME.YML")
-    parser.add_argument("parameters", metavar="PAR", nargs="*")
-    parser.add_argument("-n", "--dry-run", action="store_true")
-    parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("--api-key", metavar="FILENAME",
-                        default=os.path.expanduser("~/.grist-api-key"))
-    args = parser.parse_args()
+def sql_query(client: GristClient, query: str, *args: str) -> Sequence[Row]:
+    return [row_to_object(row) for row in client.sql(query, args)]
 
-    sys.path.append(os.path.dirname(os.path.abspath(args.filename)))
 
-    with open(args.filename) as inf:
-        yaml_doc = load(inf.read(), YAML_SCHEMA)
+class RenderArgs(tap.TypedArgs):
+    filename: str = tap.arg(positional=True, metavar="FILENAME")
+    parameters: list[str] = tap.arg(positional=True)
+    dry_run: bool = tap.arg("-n")
+    verbose: bool = tap.arg("-v")
 
-    with open(args.api_key) as inf:
-        api_key = inf.read().strip()
+    api_key: str = tap.arg(
+                    metavar="FILENAME",
+                    default=os.path.expanduser("~/.grist-api-key"))
+
+
+def render(args: RenderArgs):
+    from saneyaml import load
+    data = load(Path(args.filename).read_text())
+
+    doc = TemplateDocument.model_validate(data)
+
+    grist_api_key = Path(args.api_key).read_text().strip()
+    client = GristClient(doc.grist_root_url, grist_api_key, doc.grist_doc_id)
 
     env = Environment(undefined=StrictUndefined)
-    if "timezone" in yaml_doc:
+    if doc.timezone is not None:
         from zoneinfo import ZoneInfo
         from_ts = partial(
                     format_timestamp,
-                    timezone=ZoneInfo(yaml_doc["timezone"].text))
+                    timezone=ZoneInfo(doc.timezone))  # pyright: ignore[reportArgumentType]
     else:
         from warnings import warn
         warn("'timezone' key not specified, timestamps will be local", stacklevel=1)
         from_ts = format_timestamp
     env.filters["format_timestamp"] = from_ts
     env.filters["format_date_timestamp"] = format_date_timestamp
+    env.globals["q"] = partial(sql_query, client)  # pyright: ignore[reportArgumentType]
 
-    client = GristClient(
-            yaml_doc["grist_root_url"].text,
-            api_key,
-            yaml_doc["grist_doc_id"].text)
+    query = doc.query
 
-    query = yaml_doc["query"].text
-
-    if "parameters" in yaml_doc:
-        nrequired = len(yaml_doc["parameters"])
+    if doc.parameters:
+        nrequired = len(doc.parameters)
         nsupplied = len(args.parameters)
         if nrequired != nsupplied:
             raise ValueError(
                 f"{nrequired} parameters required, {nsupplied} supplied")
 
-        param_values = {name.text: value
-                        for name, value in zip(yaml_doc["parameters"],
+        param_values = dict(zip(doc.parameters,
                                                args.parameters,
-                                               strict=True)}
+                                               strict=True))
         query = env.from_string(query).render(param_values)
     else:
         param_values = {}
 
-    template = env.from_string(yaml_doc["template"].text)
+    template = env.from_string(doc.template)
     print(template.render({
         "rows": [row_to_object(row) for row in client.sql(query)],
         **param_values,
     }))
+
+
+def main():
+    tap.Parser(RenderArgs).bind(render).run()
+
+
+if __name__ == "__main__":
+    main()
 
 # vim: foldmethod=marker
