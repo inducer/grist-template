@@ -16,7 +16,7 @@ pip install grist-template
 or
 
 ```
-pipx install grist-mailmerge
+pipx install grist-template
 ```
 ## Use
 
