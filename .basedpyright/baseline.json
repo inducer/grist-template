@@ -32,6 +32,14 @@
                     "endColumn": 8,
                     "lineCount": 1
                 }
+            },
+            {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 4,
+                    "endColumn": 30,
+                    "lineCount": 1
+                }
             }
         ]
     }
