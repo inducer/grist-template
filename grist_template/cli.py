@@ -98,6 +98,7 @@ def render(args: RenderArgs):
     env.filters["format_timestamp"] = from_ts
     env.filters["format_date_timestamp"] = format_date_timestamp
     env.globals["q"] = partial(sql_query, client)  # pyright: ignore[reportArgumentType]
+    env.globals["file_exists"] = os.path.exists
 
     query = doc.query
 
