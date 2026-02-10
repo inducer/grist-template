@@ -33,6 +33,6 @@ jobs:
                 source .testenv/bin/activate
                 pip install .
                 pip install basedpyright
-                basedpyright
+                basedpyright --baselinemode=auto
 
 # vim: sw=4
